@@ -1,0 +1,3 @@
+[submodule "python-osc"]
+	path = python-osc
+	url = git@github.com:jaantoots/python-osc.git
