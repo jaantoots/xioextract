@@ -1,4 +1,4 @@
-from pythonosc import osc_packet
+from osc.pythonosc import osc_packet
 import slip
 
 def extract_to_file(inf, outf):
