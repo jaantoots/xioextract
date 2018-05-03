@@ -1,11 +1,7 @@
 """XIO file parser."""
 import os
-from collections import namedtuple
 from osc.pythonosc import osc_bundle, osc_message
 import slip
-
-Message = namedtuple('Message', ['address', 'params'])
-Bundle = namedtuple('Bundle', ['time', 'message'])
 
 
 class ParseError(Exception):
@@ -16,7 +12,12 @@ def process(dgram):
     """Process datagram to OSC bundle or message."""
     try:
         if osc_bundle.OscBundle.dgram_is_bundle(dgram):
-            return osc_bundle.OscBundle(dgram)
+            bundle = osc_bundle.OscBundle(dgram)
+            if bundle.num_contents != 1 or \
+               not isinstance(bundle.content(0), osc_message.OscMessage):
+                raise ValueError("XIO OSC bundle should contain"
+                                 "a single OSC message.")
+            return bundle
         elif osc_message.OscMessage.dgram_is_message(dgram):
             return osc_message.OscMessage(dgram)
         else:
@@ -34,25 +35,17 @@ class XIOData():
         """Initialize data."""
         self.messages = messages
         self.bundles = bundles
-        self.addresses = set([bundle.message.address for bundle in
-                              self.bundles])
+        self.addresses = set(bundle[1] for bundle in self.bundles)
 
     @classmethod
     def from_file(cls, file_):
         """Extract data from XIO file."""
-        dgrams = slip.decode_file(file_)
-        proc = [process(x) for x in dgrams]
-        oscmessages = [x for x in proc if isinstance(x, osc_message.OscMessage)]
-        oscbundles = [x for x in proc if isinstance(x, osc_bundle.OscBundle)]
-        messages = [Message(msg.address, msg.params) for msg in oscmessages]
-        for bundle in oscbundles:
-            if bundle.num_contents != 1 or \
-               not isinstance(bundle.content(0), osc_message.OscMessage):
-                raise ValueError("XIO OSC bundle should contain"
-                                 "a single OSC message.")
-        bundles = [(bundle.timestamp, bundle.content(0))
-                   for bundle in oscbundles]
-        bundles = [Bundle(time, Message(msg.address, msg.params))
+        proc = [process(x) for x in slip.decode_file(file_)]
+        messages = [(x.address, x.params) for x in proc
+                    if isinstance(x, osc_message.OscMessage)]
+        bundles = [(x.timestamp, x.content(0)) for x in proc
+                   if isinstance(x, osc_bundle.OscBundle)]
+        bundles = [(time, msg.address, msg.params)
                    for time, msg in bundles]
         return cls(messages, bundles)
 
@@ -68,9 +61,8 @@ class XIOData():
         """Output csv file containing data from bundles with given address."""
         with open(out, 'w') as file_:
             for bundle in self.bundles:
-                if bundle.message.address == addr:
-                    vals = ','.join([str(x) for x in [bundle.time,
-                                                      *bundle.message.params]])
+                if bundle[1] == addr:
+                    vals = ','.join([str(x) for x in bundle])
                     file_.write("{}\n".format(vals))
 
     def to_dir(self, dirname):
