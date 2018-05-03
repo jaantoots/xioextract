@@ -62,7 +62,7 @@ class XIOData():
         with open(out, 'w') as file_:
             for bundle in self.bundles:
                 if bundle[1] == addr:
-                    vals = ','.join([str(x) for x in bundle])
+                    vals = ','.join([str(x) for x in [bundle[0], *bundle[2]]])
                     file_.write("{}\n".format(vals))
 
     def to_dir(self, dirname):
