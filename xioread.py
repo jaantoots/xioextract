@@ -41,13 +41,17 @@ class XIOData():
     def from_file(cls, file_):
         """Extract data from XIO file."""
         proc = [process(x) for x in slip.decode_file(file_)]
-        messages = [(x.address, x.params) for x in proc
-                    if isinstance(x, osc_message.OscMessage)]
-        bundles = [(x.timestamp, x.content(0)) for x in proc
-                   if isinstance(x, osc_bundle.OscBundle)]
-        bundles = [(time, msg.address, msg.params)
-                   for time, msg in bundles]
-        return cls(messages, bundles)
+        messages, bundles = [], []
+        for pkt in proc:
+            if isinstance(pkt, osc_bundle.OscBundle):
+                msg = pkt.content(0)
+                bundles.append((pkt.timestamp, msg.address, msg.params))
+            else:
+                if bundles:
+                    yield cls(messages, bundles)
+                    messages, bundles = [], []
+                messages.append((pkt.address, pkt.params))
+        yield cls(messages, bundles)
 
     def dump(self, out):
         """Dump data to file."""
@@ -57,20 +61,34 @@ class XIOData():
             for bundle in self.bundles:
                 file_.write("{} {} {}\n".format(*bundle))
 
-    def to_csv(self, out, addr):
-        """Output csv file containing data from bundles with given address."""
+    def messages_unpack(self):
+        """Unpack messages for output."""
+        for message in self.messages:
+            yield [message[0], *message[1]]
+
+    def bundles_unpack(self, addr):
+        """Unpack bundles with given address for output."""
+        for bundle in self.bundles:
+            if bundle[1] == addr:
+                yield [bundle[0], *bundle[2]]
+
+    @staticmethod
+    def to_csv(out, gen):
+        """Output csv file containing unpacked values from generator."""
         with open(out, 'w') as file_:
-            for bundle in self.bundles:
-                if bundle[1] == addr:
-                    vals = ','.join([str(x) for x in [bundle[0], *bundle[2]]])
-                    file_.write("{}\n".format(vals))
+            for vals in gen:
+                csv = ','.join([str(x) for x in vals])
+                file_.write("{}\n".format(csv))
 
     def to_dir(self, dirname):
         """Write to directory."""
         os.makedirs(dirname, exist_ok=True)
+        if self.messages:
+            filename = os.path.join(dirname, 'settings.csv')
+            self.to_csv(filename, self.messages_unpack())
         for addr in self.addresses:
             if addr[0] != '/':
-                raise ValueError("Unrecognized address form {}.".format(addr))
+                raise ValueError("Unrecognized address format {}.".format(addr))
             filename = os.path.join(dirname,
                                     addr.strip('/').replace('/', '.') + '.csv')
-            self.to_csv(filename, addr)
+            self.to_csv(filename, self.bundles_unpack(addr))
