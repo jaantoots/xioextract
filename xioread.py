@@ -1,5 +1,6 @@
 """XIO file parser."""
 import os
+import argparse
 from osc.pythonosc import osc_bundle, osc_message
 import slip
 
@@ -92,3 +93,18 @@ class XIOData():
             filename = os.path.join(dirname,
                                     addr.strip('/').replace('/', '.') + '.csv')
             self.to_csv(filename, self.bundles_unpack(addr))
+
+def main():
+    """Convert XIO to CSV."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("xio", type=str,
+                        help="Input XIO file")
+    parser.add_argument("out", type=str,
+                        help="Output directory")
+    args = parser.parse_args()
+
+    for i, data in enumerate(XIOData.from_file(args.xio)):
+        data.to_dir(os.path.join(args.out, str(i)))
+
+if __name__ == "__main__":
+    main()
